@@ -352,3 +352,5 @@ Changelog:
     - Updated overtime calculation logic: weekends show 0.00 required hours, full actual hours as OT
     - Integrated weekend work detection across both overtime management and reporting interfaces
     - All overtime entries now automatically approved with descriptive remarks for better tracking
+    - Fixed Monthly Attendance Report to properly calculate weekend overtime (Saturday/Sunday work = full hours as OT)
+    - Weekend overtime now properly reflected in monthly reports with consistent calculation across all report types

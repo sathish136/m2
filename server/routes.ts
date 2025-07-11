@@ -1141,20 +1141,31 @@ router.get("/api/reports/monthly-attendance", async (req, res) => {
           dayData.status = 'A';
         }
 
-        // Calculate overtime like in Daily OT Report
+        // Calculate overtime like in Daily OT Report with weekend handling
         if (attendanceRecord && attendanceRecord.checkIn && attendanceRecord.checkOut) {
           const diffMs = new Date(attendanceRecord.checkOut).getTime() - new Date(attendanceRecord.checkIn).getTime();
           const actualHours = diffMs / (1000 * 60 * 60);
           
-          // Determine required hours based on employee group (same logic as Daily OT Report)
-          let requiredHours = 8; // Default
-          if (emp.employeeGroup === 'group_a') {
-            requiredHours = 7.75; // groupA minHoursForOT
-          } else if (emp.employeeGroup === 'group_b') {
-            requiredHours = 8.75; // groupB minHoursForOT
+          // Check if this is a weekend (Saturday = 6, Sunday = 0)
+          const dayOfWeek = day.getDay();
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          
+          let calculatedOtHours = 0;
+          
+          if (isWeekend) {
+            // Weekend: All working hours count as overtime
+            calculatedOtHours = actualHours;
+          } else {
+            // Regular day: Use group-specific thresholds
+            let requiredHours = 8; // Default
+            if (emp.employeeGroup === 'group_a') {
+              requiredHours = 7.75; // groupA minHoursForOT
+            } else if (emp.employeeGroup === 'group_b') {
+              requiredHours = 8.75; // groupB minHoursForOT
+            }
+            calculatedOtHours = Math.max(0, actualHours - requiredHours);
           }
           
-          const calculatedOtHours = Math.max(0, actualHours - requiredHours);
           if (calculatedOtHours > 0) {
             dayData.overtime = calculatedOtHours.toFixed(2);
           }
