@@ -778,13 +778,18 @@ router.put("/api/overtime-requests/:id", async (req, res) => {
 // Get eligible employees for overtime (worked overtime but no request submitted)
 router.get("/api/overtime-eligible", async (req, res) => {
   try {
-    const { date } = z.object({
-      date: z.string().optional().default(() => new Date().toISOString().split('T')[0])
+    const { startDate, endDate } = z.object({
+      startDate: z.string().optional().default(() => {
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        return monthStart.toISOString().split('T')[0];
+      }),
+      endDate: z.string().optional().default(() => new Date().toISOString().split('T')[0])
     }).parse(req.query);
 
-    const targetDate = new Date(date);
-    const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-    const endOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
+    const startOfRange = new Date(startDate);
+    const endOfRange = new Date(endDate);
+    endOfRange.setHours(23, 59, 59, 999); // End of day
 
     // Fetch HR policy for group time thresholds
     const groupWorkingHours = await getGroupWorkingHours();
@@ -797,56 +802,82 @@ router.get("/api/overtime-eligible", async (req, res) => {
       employeeGroup: employees.employeeGroup,
     }).from(employees);
 
-    // Get attendance records for the date
+    // Get attendance records for the date range
     const attendanceRecords = await db.select()
       .from(attendance)
       .where(and(
-        gte(attendance.date, startOfDay),
-        lt(attendance.date, endOfDay)
+        gte(attendance.checkIn, startOfRange),
+        lte(attendance.checkIn, endOfRange)
       ));
 
-    // Get existing overtime requests for the date
+    // Get existing overtime requests for the date range
     const existingRequests = await db.select()
       .from(overtimeRequests)
       .where(and(
-        gte(overtimeRequests.date, startOfDay),
-        lt(overtimeRequests.date, endOfDay)
+        gte(overtimeRequests.date, startOfRange),
+        lte(overtimeRequests.date, endOfRange)
       ));
 
-    const eligibleEmployees = allEmployees.map(emp => {
-      let requiredHours = 8;
+    const eligibleEmployees = [];
+    
+    // Process each employee for each day in the range
+    for (const emp of allEmployees) {
+      let requiredHours = 7.5; // Default for Group A
       if (emp.employeeGroup === 'group_a') {
-        // Check the more specific overtime policy setting first, then fallback to main setting
         requiredHours = groupWorkingHours.groupA?.overtimePolicy?.normalDay?.minHoursForOT || 
                        groupWorkingHours.groupA?.minHoursForOT || 
-                       8;
+                       7.5;
       } else if (emp.employeeGroup === 'group_b') {
         requiredHours = groupWorkingHours.groupB?.overtimePolicy?.normalDay?.minHoursForOT || 
                        groupWorkingHours.groupB?.minHoursForOT || 
-                       8;
+                       8.75;
       }
 
-      let actualHours = 0;
-      const empAttendance = attendanceRecords.find(a => a.employeeId === emp.id);
-      if (empAttendance && empAttendance.checkIn && empAttendance.checkOut) {
-        const diffMs = new Date(empAttendance.checkOut).getTime() - new Date(empAttendance.checkIn).getTime();
-        actualHours = diffMs / (1000 * 60 * 60);
+      // Find all attendance records for this employee in the date range
+      const empAttendanceRecords = attendanceRecords.filter(a => a.employeeId === emp.id);
+      
+      for (const empAttendance of empAttendanceRecords) {
+        if (empAttendance.checkIn && empAttendance.checkOut) {
+          const diffMs = new Date(empAttendance.checkOut).getTime() - new Date(empAttendance.checkIn).getTime();
+          const actualHours = diffMs / (1000 * 60 * 60);
+          const attendanceDate = new Date(empAttendance.checkIn);
+          const dayOfWeek = attendanceDate.getDay(); // 0 = Sunday, 6 = Saturday
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          
+          // For weekends, all working hours count as OT (no minimum required)
+          // For regular days, only hours above required threshold count as OT
+          const finalOtHours = isWeekend ? actualHours : Math.max(0, actualHours - requiredHours);
+          
+          // Show overtime entry if there are OT hours OR if it's weekend work
+          if (finalOtHours > 0) {
+            const hasExistingRequest = existingRequests.some(req => 
+              req.employeeId === emp.id && 
+              new Date(req.date).toDateString() === attendanceDate.toDateString()
+            );
+
+            let remark = '';
+            if (isWeekend) {
+              const dayName = dayOfWeek === 0 ? 'Sunday' : 'Saturday';
+              remark = `${dayName} Work - Full hours as OT`;
+            } else {
+              remark = `Regular day overtime`;
+            }
+
+            eligibleEmployees.push({
+              ...emp,
+              actualHours: actualHours.toFixed(2),
+              requiredHours: isWeekend ? '0.00' : requiredHours.toFixed(2),
+              otHours: finalOtHours.toFixed(2),
+              date: attendanceDate.toISOString().split('T')[0],
+              remark,
+              isWeekend,
+              hasOvertimeHours: true,
+              hasExistingRequest
+            });
+          }
+        }
       }
-
-      const otHours = Math.max(0, actualHours - requiredHours);
-      const hasExistingRequest = existingRequests.some(req => req.employeeId === emp.id);
-
-      return {
-        ...emp,
-        actualHours: actualHours.toFixed(2),
-        requiredHours: requiredHours.toFixed(2),
-        otHours: otHours.toFixed(2),
-        date: startOfDay.toISOString().split('T')[0],
-        hasOvertimeHours: otHours > 0,
-        hasExistingRequest
-      };
-    })
-    .filter(emp => emp.hasOvertimeHours && !emp.hasExistingRequest);
+    }
 
     res.json(eligibleEmployees);
   } catch (error) {
@@ -1354,13 +1385,19 @@ router.get("/api/reports/daily-attendance", async (req, res) => {
 router.get("/api/reports/daily-ot", async (req, res) => {
   try {
     const { date, employeeId, group } = z.object({
-      date: z.string().transform(val => new Date(val)),
+      date: z.string(),
       employeeId: z.string().optional(),
       group: z.string().optional(),
     }).parse(req.query);
+    
+    // Safely parse the date
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ message: "Invalid date format" });
+    }
 
-    const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+    const startOfDay = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+    const endOfDay = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate() + 1);
 
     // Fetch HR policy for group time thresholds
     const groupWorkingHours = await getGroupWorkingHours();
@@ -1436,39 +1473,30 @@ router.get("/api/reports/daily-ot", async (req, res) => {
         actualHours = diffMs / (1000 * 60 * 60);
       }
 
-      const otHours = Math.max(0, actualHours - requiredHours);
-
-      // Check for overtime request and its status based on actual workflow
-      const overtimeRequest = otRecords.find(ot => ot.employeeId === emp.id);
-      let otApprovalStatus = 'Pending'; // Default status for eligible employees
+      const dayOfWeek = parsedDate.getDay(); // 0 = Sunday, 6 = Saturday
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       
+      // For weekends, all working hours count as OT (no minimum required)
+      // For regular days, only hours above required threshold count as OT
+      const otHours = isWeekend ? actualHours : Math.max(0, actualHours - requiredHours);
+
+      let remark = '';
       if (otHours > 0) {
-        if (overtimeRequest) {
-          // Map database status to display status
-          switch (overtimeRequest.status) {
-            case 'approved':
-              otApprovalStatus = 'Approved';
-              break;
-            case 'rejected':
-              otApprovalStatus = 'Rejected';
-              break;
-            case 'pending':
-            default:
-              otApprovalStatus = 'Pending';
-              break;
-          }
+        if (isWeekend) {
+          const dayName = dayOfWeek === 0 ? 'Sunday' : 'Saturday';
+          remark = `${dayName} Work - Full hours as OT`;
         } else {
-          // No overtime request submitted yet - default to Pending
-          otApprovalStatus = 'Pending';
+          remark = `Regular day overtime`;
         }
       }
 
       return {
         ...emp,
         actualHours: actualHours.toFixed(2),
-        requiredHours: requiredHours.toFixed(2),
+        requiredHours: isWeekend ? '0.00' : requiredHours.toFixed(2),
         otHours: otHours.toFixed(2),
-        otApprovalStatus,
+        remark,
+        isWeekend,
         isEligible: otHours > 0,
       };
     })

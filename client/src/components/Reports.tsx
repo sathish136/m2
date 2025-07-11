@@ -77,6 +77,16 @@ export default function Reports() {
     enabled: reportType === "overtime",
   });
 
+  const { data: monthlyOvertimeData } = useQuery({
+    queryKey: ["/api/overtime-eligible", startDate, endDate],
+    queryFn: async () => {
+      const response = await fetch(`/api/overtime-eligible?startDate=${startDate}&endDate=${endDate}`);
+      if (!response.ok) throw new Error("Failed to fetch monthly overtime data");
+      return response.json();
+    },
+    enabled: reportType === "monthly-ot",
+  });
+
   const { data: employeeReportData } = useQuery({
     queryKey: ["/api/reports/employees", selectedEmployee],
     queryFn: async () => {
@@ -297,6 +307,9 @@ export default function Reports() {
         case 'short-leave-usage':
           reportTitle = 'Short Leave Usage Report';
           break;
+        case 'monthly-ot':
+          reportTitle = 'Monthly Overtime Report';
+          break;
         default:
           reportTitle = 'Attendance Report';
       }
@@ -449,6 +462,10 @@ export default function Reports() {
           data = offerAttendanceData;
           filename = `offer-attendance-${startDate}-to-${endDate}`;
           break;
+        case "monthly-ot":
+          data = monthlyOvertimeData;
+          filename = `monthly-overtime-${startDate}-to-${endDate}`;
+          break;
         default:
           throw new Error("Unknown report type");
       }
@@ -515,6 +532,9 @@ export default function Reports() {
         break;
       case 'daily-ot':
         reportTitle = 'Daily Overtime Report';
+        break;
+      case 'monthly-ot':
+        reportTitle = 'Monthly Overtime Report';
         break;
       case 'monthly-attendance':
         reportTitle = 'Monthly Attendance Sheet';
@@ -1066,7 +1086,7 @@ export default function Reports() {
                   <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Actual Hours</th>
                   <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Required Hours</th>
                   <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">OT Hours</th>
-                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">OT Approval Status</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Remark</th>
                 </tr>
               </thead>
               <tbody>
@@ -1088,13 +1108,96 @@ export default function Reports() {
                       {record.otHours > 0 ? record.otHours : '-'}
                     </td>
                     <td className="border border-gray-300 px-2 py-1.5 text-xs">
-                      <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
-                        record.otApprovalStatus === 'Approved' ? 'bg-green-100 text-green-800' :
-                        record.otApprovalStatus === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
-                        record.otApprovalStatus === 'Rejected' ? 'bg-red-100 text-red-800' :
-                        'bg-gray-100 text-gray-800'
+                      <span className={`text-xs ${
+                        record.isWeekend ? 'text-orange-600 font-medium' : 'text-gray-600'
                       }`}>
-                        {record.otApprovalStatus}
+                        {record.remark || 'Regular day overtime'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderMonthlyOtReport = () => {
+    if (!monthlyOvertimeData || monthlyOvertimeData.length === 0) {
+      return (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-gray-500">No overtime records found for the selected period.</div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    const totalOtHours = monthlyOvertimeData.reduce((sum: number, record: any) => sum + parseFloat(record.otHours || 0), 0);
+    const weekendOtHours = monthlyOvertimeData.filter((r: any) => r.isWeekend).reduce((sum: number, record: any) => sum + parseFloat(record.otHours || 0), 0);
+    const regularOtHours = totalOtHours - weekendOtHours;
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Monthly Overtime Report - {new Date(startDate).toLocaleDateString('en-US', { 
+              year: 'numeric', 
+              month: 'long' 
+            })}
+          </CardTitle>
+          <div className="flex gap-4 text-sm text-gray-600">
+            <div>Total Records: {monthlyOvertimeData.length}</div>
+            <div>Total OT Hours: {totalOtHours.toFixed(2)}</div>
+            <div>Weekend OT Hours: {weekendOtHours.toFixed(2)}</div>
+            <div>Regular OT Hours: {regularOtHours.toFixed(2)}</div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse border border-gray-300 text-sm">
+              <thead>
+                <tr className="bg-gradient-to-r from-orange-50 to-orange-100 border-b-2 border-orange-200">
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">S.No</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Employee ID</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Name</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Group</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Actual Hours</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Required Hours</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">OT Hours</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Date</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Remark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyOvertimeData.map((record: any, index: number) => (
+                  <tr key={`${record.employeeId}-${record.date}`} className={`hover:bg-gray-50 ${record.isWeekend ? 'bg-orange-50' : 'bg-white'}`}>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{index + 1}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 font-medium text-xs">{record.employeeId}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{record.fullName}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                        record.employeeGroup === 'group_a' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                      }`}>
+                        {record.employeeGroup === 'group_a' ? 'Group A' : record.employeeGroup === 'group_b' ? 'Group B' : record.employeeGroup || 'N/A'}
+                      </span>
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1.5 font-medium text-xs">{record.actualHours || '0.00'}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{record.requiredHours || '0.00'}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 font-bold text-orange-600 text-xs">
+                      {record.otHours > 0 ? record.otHours : '-'}
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">
+                      {new Date(record.date).toLocaleDateString()}
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">
+                      <span className={`text-xs ${
+                        record.isWeekend ? 'text-orange-600 font-medium' : 'text-gray-600'
+                      }`}>
+                        {record.remark || 'Regular day overtime'}
                       </span>
                     </td>
                   </tr>
@@ -2183,6 +2286,7 @@ export default function Reports() {
               <SelectContent>
                 <SelectItem value="daily-attendance">Daily Attendance Report</SelectItem>
                 <SelectItem value="daily-ot">Daily OT Report</SelectItem>
+                <SelectItem value="monthly-ot">Monthly OT Report</SelectItem>
                 <SelectItem value="monthly-attendance">Monthly Attendance Sheet</SelectItem>
                 <SelectItem value="late-arrival">Late Arrival Report</SelectItem>
                 <SelectItem value="half-day">Half Day Report</SelectItem>
@@ -2205,6 +2309,25 @@ export default function Reports() {
                     }}
                   />
                 </div>
+              ) : reportType === "monthly-ot" ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                    <Input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                    <Input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                    />
+                  </div>
+                </>
               ) : (
                 <>
                   <div>
@@ -2243,7 +2366,7 @@ export default function Reports() {
               </SelectContent>
             </Select>
           </div>
-          {(reportType === "monthly-attendance" || reportType === "daily-ot" || reportType === "daily-attendance" || reportType === "offer-attendance" || reportType === "late-arrival" || reportType === "half-day" || reportType === "short-leave-usage") && (
+          {(reportType === "monthly-attendance" || reportType === "daily-ot" || reportType === "daily-attendance" || reportType === "offer-attendance" || reportType === "late-arrival" || reportType === "half-day" || reportType === "short-leave-usage" || reportType === "monthly-ot") && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Group</label>
               <Select value={selectedGroup} onValueChange={setSelectedGroup}>
@@ -2264,6 +2387,7 @@ export default function Reports() {
       {/* Report Content */}
       {reportType === "daily-attendance" && renderDailyAttendanceReport()}
       {reportType === "daily-ot" && renderDailyOtReport()}
+      {reportType === "monthly-ot" && renderMonthlyOtReport()}
       {reportType === "monthly-attendance" && renderMonthlyAttendanceSheet()}
       {reportType === "late-arrival" && renderLateArrivalReport()}
       {reportType === "half-day" && renderHalfDayReport()}

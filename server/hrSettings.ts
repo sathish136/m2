@@ -36,6 +36,21 @@ const defaultSettings: GroupWorkingHours = {
       maxPerMonth: 2,            // Maximum 2 per month
       preApprovalRequired: true, // Must be pre-approved
       minimumWorkingHoursRequired: true // Must still meet minimum working hours
+    },
+    halfDayRule: {
+      appliesAfter: '10:00',
+      appliesBefore: '14:45',
+      shortLeaveExcusesHalfDay: false
+    },
+    overtimePolicy: {
+      normalDay: {
+        minHoursForOT: 7.5,
+        saturdaySundayFullOT: true,
+        preApprovalRequired: false
+      },
+      holiday: {
+        allHoursAsOT: true
+      }
     }
   },
   groupB: {
@@ -56,6 +71,20 @@ const defaultSettings: GroupWorkingHours = {
       eveningEnd: '16:45',
       maxPerMonth: 2,            // Maximum 2 per month
       preApprovalRequired: true  // Must be approved in advance
+    },
+    halfDayRule: {
+      appliesAfter: '09:30',
+      appliesBefore: '15:15'
+    },
+    overtimePolicy: {
+      normalDay: {
+        minHoursForOT: 8.75,
+        saturdaySundayFullOT: true,
+        preApprovalRequired: false
+      },
+      holiday: {
+        allHoursAsOT: true
+      }
     }
   }
 };

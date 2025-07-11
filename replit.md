@@ -331,3 +331,24 @@ Changelog:
     - Fixed login flow issue where application required refresh after login to load properly
     - Enhanced AuthGuard with periodic authentication checking for immediate state updates
     - Login now properly redirects and loads application without requiring manual refresh
+  - System Navigation Updates (July 11, 2025):
+    - Hidden Leave Management and Leave & Holiday pages from main navigation as requested
+    - Removed approval requirements for overtime - all OT hours are now automatically approved
+    - Updated overtime management interface to reflect automatic approval system
+    - Modified overtime policy settings to set preApprovalRequired to false for both groups
+    - Enhanced weekend overtime calculation - Saturday and Sunday work automatically adds full OT hours
+    - Simplified overtime workflow by removing manual approval buttons and processes
+    - Updated overtime management labels to show "OT Hours" instead of "Pending Approvals"
+    - Weekend and holiday overtime rules properly implemented - all working hours count as OT
+    - Navigation now streamlined to: Dashboard, Employee Master, Attendance, Overtime, Reports, Settings
+  - Overtime Management & Daily OT Reports Enhancement (July 11, 2025):
+    - Added comprehensive date range filtering (From/To dates) replacing single date picker
+    - Default date range set to current month start to current date for immediate usability
+    - Implemented weekend overtime detection with automatic full-hour OT calculation
+    - Added intelligent remark system showing "Saturday Work" or "Sunday Work" for weekend overtime
+    - Enhanced Daily OT Reports page by replacing approval status column with descriptive remarks
+    - Weekend overtime entries now display with orange highlighting to distinguish from regular OT
+    - Fixed database date handling errors that caused "Invalid time value" issues
+    - Updated overtime calculation logic: weekends show 0.00 required hours, full actual hours as OT
+    - Integrated weekend work detection across both overtime management and reporting interfaces
+    - All overtime entries now automatically approved with descriptive remarks for better tracking
