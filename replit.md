@@ -355,3 +355,4 @@ Changelog:
     - Fixed Monthly Attendance Report to properly calculate weekend overtime (Saturday/Sunday work = full hours as OT)
     - Weekend overtime now properly reflected in monthly reports with consistent calculation across all report types
     - Updated Monthly OT Report date filter to automatically set from month start (1st) to current date for better user experience
+    - Fixed Monthly Attendance Sheet date filter to show full month range (1st to 30th/31st) for complete monthly view

@@ -19,13 +19,19 @@ export default function Reports() {
   const [previewData, setPreviewData] = useState<any>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
-  // Automatically update date range for Monthly OT Report
+  // Automatically update date range for Monthly OT Report and Monthly Attendance
   useEffect(() => {
     if (reportType === "monthly-ot") {
       const now = new Date();
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       setStartDate(formatDate(firstDayOfMonth));
-      setEndDate(formatDate(now)); // Current date instead of last day of month
+      setEndDate(formatDate(now)); // Current date for OT reports
+    } else if (reportType === "monthly-attendance") {
+      const now = new Date();
+      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      setStartDate(formatDate(firstDayOfMonth));
+      setEndDate(formatDate(lastDayOfMonth)); // Full month for attendance sheet
     }
   }, [reportType]);
 
