@@ -356,3 +356,12 @@ Changelog:
     - Weekend overtime now properly reflected in monthly reports with consistent calculation across all report types
     - Updated Monthly OT Report date filter to automatically set from month start (1st) to current date for better user experience
     - Fixed Monthly Attendance Sheet date filter to show full month range (1st to 30th/31st) for complete monthly view
+  - Three Additional Custom Reports Implementation (July 12, 2025):
+    - Added Employee Punch Times Report showing all check-in/check-out timestamps with employee details and day information
+    - Added Individual Employee Monthly Report with detailed daily breakdown including late/half-day/short leave status
+    - Added Monthly Absence Report showing employees with poor attendance patterns and attendance percentages
+    - Fixed date filter defaults for new reports (month start to current date for better usability)
+    - Fixed Monthly Absence Report calculation to properly count working days and exclude weekends from leave calculations
+    - Enhanced employee selection for Individual Monthly Report to require specific employee selection
+    - All new reports include professional styling, proper filtering, and export functionality
+    - Backend API endpoints implemented with comprehensive data validation and error handling

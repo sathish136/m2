@@ -3279,7 +3279,6 @@ router.get("/api/reports/monthly-absence", async (req, res) => {
       ));
 
     // Calculate working days in the period (excluding weekends)
-    const totalDays = Math.ceil((endOfPeriod.getTime() - startOfPeriod.getTime()) / (1000 * 60 * 60 * 24));
     let workingDays = 0;
     const tempDate = new Date(startOfPeriod);
     
@@ -3298,14 +3297,22 @@ router.get("/api/reports/monthly-absence", async (req, res) => {
       // Count present days
       const presentDays = attendanceRecords.filter(record => record.employeeId === emp.id).length;
       
-      // Count leave days
+      // Count leave days that fall within the period and on working days
       let leaveDays = 0;
       leaveRecords.forEach(leave => {
         if (leave.employeeId === emp.id) {
           const leaveStart = new Date(Math.max(leave.startDate.getTime(), startOfPeriod.getTime()));
           const leaveEnd = new Date(Math.min(leave.endDate.getTime(), endOfPeriod.getTime()));
-          const leaveDuration = Math.ceil((leaveEnd.getTime() - leaveStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-          leaveDays += leaveDuration;
+          
+          // Count only working days during leave period
+          const leaveDate = new Date(leaveStart);
+          while (leaveDate <= leaveEnd) {
+            const dayOfWeek = leaveDate.getDay();
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not weekend
+              leaveDays++;
+            }
+            leaveDate.setDate(leaveDate.getDate() + 1);
+          }
         }
       });
       

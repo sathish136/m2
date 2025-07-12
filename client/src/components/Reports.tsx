@@ -19,7 +19,7 @@ export default function Reports() {
   const [previewData, setPreviewData] = useState<any>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
-  // Automatically update date range for Monthly OT Report and Monthly Attendance
+  // Automatically update date range for specific reports
   useEffect(() => {
     if (reportType === "monthly-ot") {
       const now = new Date();
@@ -32,6 +32,11 @@ export default function Reports() {
       const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       setStartDate(formatDate(firstDayOfMonth));
       setEndDate(formatDate(lastDayOfMonth)); // Full month for attendance sheet
+    } else if (reportType === "individual-monthly" || reportType === "employee-punch-times" || reportType === "monthly-absence") {
+      const now = new Date();
+      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setStartDate(formatDate(firstDayOfMonth));
+      setEndDate(formatDate(now)); // Current date for new reports
     }
   }, [reportType]);
 
@@ -2431,10 +2436,10 @@ export default function Reports() {
             <label className="block text-sm font-medium text-gray-700 mb-2">Employee</label>
             <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
               <SelectTrigger className="w-full rounded-md border-gray-300">
-                <SelectValue placeholder="Select employee" />
+                <SelectValue placeholder={reportType === "individual-monthly" ? "Select an employee (required)" : "Select employee"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Employees</SelectItem>
+                {reportType !== "individual-monthly" && <SelectItem value="all">All Employees</SelectItem>}
                 {employees && employees.map((emp: any) => (
                   <SelectItem key={emp.employeeId} value={emp.employeeId}>
                     {emp.fullName} ({emp.employeeId})
