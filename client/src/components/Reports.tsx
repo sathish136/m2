@@ -24,9 +24,8 @@ export default function Reports() {
     if (reportType === "monthly-attendance") {
       const now = new Date();
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       setStartDate(formatDate(firstDayOfMonth));
-      setEndDate(formatDate(lastDayOfMonth));
+      setEndDate(formatDate(now)); // Current date instead of last day of month
     }
   }, [reportType]);
 

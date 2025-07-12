@@ -851,7 +851,7 @@ router.get("/api/overtime-eligible", async (req, res) => {
           // Show overtime entry if there are OT hours OR if it's weekend work
           if (finalOtHours > 0) {
             const hasExistingRequest = existingRequests.some(req => 
-              req.employeeId === emp.id && 
+              req.employeeId === parseInt(emp.id, 10) && 
               new Date(req.date).toDateString() === attendanceDate.toDateString()
             );
 
