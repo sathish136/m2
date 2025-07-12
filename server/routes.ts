@@ -2969,6 +2969,372 @@ router.get('/api/reports/offer-attendance', async (req, res) => {
   }
 });
 
+// --- Employee Punch Times Report Route ---
+router.get("/api/reports/employee-punch-times", async (req, res) => {
+  try {
+    const { startDate, endDate, employeeId } = z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+      employeeId: z.string().optional(),
+    }).parse(req.query);
+
+    const startOfPeriod = new Date(startDate);
+    const endOfPeriod = new Date(endDate);
+    endOfPeriod.setHours(23, 59, 59, 999);
+
+    // Build where conditions for employees
+    let employeeWhere = undefined;
+    if (employeeId && employeeId !== "all") {
+      employeeWhere = eq(employees.employeeId, employeeId);
+    }
+
+    // Get all employees based on filter
+    const allEmployees = await db.select({
+      id: employees.id,
+      employeeId: employees.employeeId,
+      fullName: employees.fullName,
+    }).from(employees).where(employeeWhere);
+
+    // Get all attendance records for the period
+    const attendanceRecords = await db.select({
+      employeeId: attendance.employeeId,
+      date: attendance.date,
+      checkIn: attendance.checkIn,
+      checkOut: attendance.checkOut,
+    })
+      .from(attendance)
+      .where(and(
+        gte(attendance.date, startOfPeriod),
+        lte(attendance.date, endOfPeriod)
+      ));
+
+    // Create punch times data
+    const punchTimesData: any[] = [];
+
+    attendanceRecords.forEach(record => {
+      const employee = allEmployees.find(emp => emp.id === record.employeeId);
+      if (!employee) return;
+
+      const recordDate = new Date(record.date);
+      const dayOfWeek = recordDate.toLocaleDateString('en-US', { weekday: 'long' });
+      const formattedDate = recordDate.toLocaleDateString('en-GB');
+
+      // Add check-in punch
+      if (record.checkIn) {
+        const checkInTime = new Date(record.checkIn);
+        punchTimesData.push({
+          employeeId: employee.employeeId,
+          fullName: employee.fullName,
+          date: formattedDate,
+          punchTime: checkInTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+          type: 'IN',
+          dayOfWeek: dayOfWeek
+        });
+      }
+
+      // Add check-out punch
+      if (record.checkOut && record.checkOut.getTime() !== record.checkIn?.getTime()) {
+        const checkOutTime = new Date(record.checkOut);
+        punchTimesData.push({
+          employeeId: employee.employeeId,
+          fullName: employee.fullName,
+          date: formattedDate,
+          punchTime: checkOutTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+          type: 'OUT',
+          dayOfWeek: dayOfWeek
+        });
+      }
+    });
+
+    // Sort by employee ID, date, and time
+    punchTimesData.sort((a, b) => {
+      const empCompare = a.employeeId.localeCompare(b.employeeId);
+      if (empCompare !== 0) return empCompare;
+      
+      const dateCompare = new Date(a.date.split('/').reverse().join('-')).getTime() - 
+                          new Date(b.date.split('/').reverse().join('-')).getTime();
+      if (dateCompare !== 0) return dateCompare;
+      
+      return a.punchTime.localeCompare(b.punchTime);
+    });
+
+    res.json(punchTimesData);
+  } catch (error) {
+    console.error("Failed to fetch employee punch times report:", error);
+    res.status(500).json({ message: "Failed to fetch employee punch times report" });
+  }
+});
+
+// --- Individual Employee Monthly Report Route ---
+router.get("/api/reports/individual-monthly", async (req, res) => {
+  try {
+    const { startDate, endDate, employeeId } = z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+      employeeId: z.string(),
+    }).parse(req.query);
+
+    if (!employeeId || employeeId === "all") {
+      return res.status(400).json({ message: "Employee ID is required for individual monthly report" });
+    }
+
+    const startOfPeriod = new Date(startDate);
+    const endOfPeriod = new Date(endDate);
+    endOfPeriod.setHours(23, 59, 59, 999);
+
+    // Get employee details
+    const employee = await db.select({
+      id: employees.id,
+      employeeId: employees.employeeId,
+      fullName: employees.fullName,
+      employeeGroup: employees.employeeGroup,
+    })
+      .from(employees)
+      .where(eq(employees.employeeId, employeeId))
+      .limit(1);
+
+    if (employee.length === 0) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    const emp = employee[0];
+
+    // Get attendance records for the employee
+    const attendanceRecords = await db.select()
+      .from(attendance)
+      .where(and(
+        eq(attendance.employeeId, emp.id),
+        gte(attendance.date, startOfPeriod),
+        lte(attendance.date, endOfPeriod)
+      ))
+      .orderBy(attendance.date);
+
+    // Get leave requests for the period
+    const leaveRecords = await db.select()
+      .from(leaveRequests)
+      .where(and(
+        eq(leaveRequests.employeeId, emp.id),
+        gte(leaveRequests.startDate, startOfPeriod),
+        lte(leaveRequests.endDate, endOfPeriod),
+        eq(leaveRequests.status, 'approved')
+      ));
+
+    // Generate daily data for the period
+    const dailyData: any[] = [];
+    const currentDate = new Date(startOfPeriod);
+
+    while (currentDate <= endOfPeriod) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      const formattedDate = currentDate.toLocaleDateString('en-GB');
+      
+      // Check if employee has attendance record
+      const attendanceRecord = attendanceRecords.find(record => 
+        new Date(record.date).toDateString() === currentDate.toDateString()
+      );
+
+      // Check if employee is on leave
+      const onLeave = leaveRecords.some(leave => {
+        const leaveStart = new Date(leave.startDate);
+        const leaveEnd = new Date(leave.endDate);
+        return currentDate >= leaveStart && currentDate <= leaveEnd;
+      });
+
+      let status = 'Absent';
+      let inTime = '';
+      let outTime = '';
+      let totalHours = '0.00';
+      let isLate = false;
+      let isHalfDay = false;
+      let onShortLeave = false;
+      let notes = '';
+
+      if (onLeave) {
+        status = 'On Leave';
+        notes = 'Approved Leave';
+      } else if (attendanceRecord) {
+        status = 'Present';
+        
+        if (attendanceRecord.checkIn) {
+          const checkIn = new Date(attendanceRecord.checkIn);
+          inTime = checkIn.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+          
+          // Check if late based on group policy
+          const inTimeHour = checkIn.getHours();
+          const inTimeMinute = checkIn.getMinutes();
+          const isGroupA = emp.employeeGroup === 'group_a';
+          const lateThreshold = isGroupA ? 9 * 60 : 8 * 60 + 15; // 9:00 AM for Group A, 8:15 AM for Group B
+          const halfDayThreshold = isGroupA ? 10 * 60 : 9 * 60 + 30; // 10:00 AM for Group A, 9:30 AM for Group B
+          
+          const inTimeTotalMinutes = inTimeHour * 60 + inTimeMinute;
+          if (inTimeTotalMinutes > lateThreshold) {
+            isLate = true;
+          }
+          if (inTimeTotalMinutes > halfDayThreshold) {
+            isHalfDay = true;
+            status = 'Half Day';
+          }
+        }
+
+        if (attendanceRecord.checkOut) {
+          const checkOut = new Date(attendanceRecord.checkOut);
+          outTime = checkOut.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+          
+          // Calculate total hours
+          if (attendanceRecord.checkIn) {
+            const diffMs = checkOut.getTime() - new Date(attendanceRecord.checkIn).getTime();
+            const diffHrs = diffMs / (1000 * 60 * 60);
+            totalHours = diffHrs.toFixed(2);
+            
+            // Check for short leave
+            const expectedHours = emp.employeeGroup === 'group_a' ? 7.75 : 8.75;
+            if (diffHrs < expectedHours && diffHrs > expectedHours / 2) {
+              onShortLeave = true;
+              status = 'Short Leave';
+            }
+          }
+        }
+        
+        if (isLate && !isHalfDay) {
+          status = 'Late';
+        }
+      }
+
+      dailyData.push({
+        employeeId: emp.employeeId,
+        fullName: emp.fullName,
+        date: formattedDate,
+        inTime,
+        outTime,
+        totalHours,
+        status,
+        isLate,
+        isHalfDay,
+        onShortLeave,
+        notes
+      });
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    res.json(dailyData);
+  } catch (error) {
+    console.error("Failed to fetch individual monthly report:", error);
+    res.status(500).json({ message: "Failed to fetch individual monthly report" });
+  }
+});
+
+// --- Monthly Absence Report Route ---
+router.get("/api/reports/monthly-absence", async (req, res) => {
+  try {
+    const { startDate, endDate, group } = z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+      group: z.string().optional(),
+    }).parse(req.query);
+
+    const startOfPeriod = new Date(startDate);
+    const endOfPeriod = new Date(endDate);
+    endOfPeriod.setHours(23, 59, 59, 999);
+
+    // Build where conditions for employees
+    let employeeWhere = undefined;
+    if (group && group !== "all") {
+      employeeWhere = eq(employees.employeeGroup, group);
+    }
+
+    // Get all employees based on filter
+    const allEmployees = await db.select({
+      id: employees.id,
+      employeeId: employees.employeeId,
+      fullName: employees.fullName,
+      employeeGroup: employees.employeeGroup,
+      departmentId: employees.departmentId,
+    }).from(employees).where(employeeWhere);
+
+    // Get departments for display
+    const departmentList = await db.select().from(schemas.departments);
+
+    // Get all attendance records for the period
+    const attendanceRecords = await db.select({
+      employeeId: attendance.employeeId,
+      date: attendance.date,
+    })
+      .from(attendance)
+      .where(and(
+        gte(attendance.date, startOfPeriod),
+        lte(attendance.date, endOfPeriod)
+      ));
+
+    // Get approved leave records for the period
+    const leaveRecords = await db.select({
+      employeeId: leaveRequests.employeeId,
+      startDate: leaveRequests.startDate,
+      endDate: leaveRequests.endDate,
+    })
+      .from(leaveRequests)
+      .where(and(
+        gte(leaveRequests.startDate, startOfPeriod),
+        lte(leaveRequests.endDate, endOfPeriod),
+        eq(leaveRequests.status, 'approved')
+      ));
+
+    // Calculate working days in the period (excluding weekends)
+    const totalDays = Math.ceil((endOfPeriod.getTime() - startOfPeriod.getTime()) / (1000 * 60 * 60 * 24));
+    let workingDays = 0;
+    const tempDate = new Date(startOfPeriod);
+    
+    while (tempDate <= endOfPeriod) {
+      const dayOfWeek = tempDate.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday (0) or Saturday (6)
+        workingDays++;
+      }
+      tempDate.setDate(tempDate.getDate() + 1);
+    }
+
+    // Calculate absence data for each employee
+    const absenceData = allEmployees.map(emp => {
+      const department = departmentList.find(dept => dept.id === emp.departmentId);
+      
+      // Count present days
+      const presentDays = attendanceRecords.filter(record => record.employeeId === emp.id).length;
+      
+      // Count leave days
+      let leaveDays = 0;
+      leaveRecords.forEach(leave => {
+        if (leave.employeeId === emp.id) {
+          const leaveStart = new Date(Math.max(leave.startDate.getTime(), startOfPeriod.getTime()));
+          const leaveEnd = new Date(Math.min(leave.endDate.getTime(), endOfPeriod.getTime()));
+          const leaveDuration = Math.ceil((leaveEnd.getTime() - leaveStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          leaveDays += leaveDuration;
+        }
+      });
+      
+      // Calculate absent days (working days - present days - leave days)
+      const absentDays = Math.max(0, workingDays - presentDays - leaveDays);
+      const attendancePercentage = workingDays > 0 ? Math.round(((presentDays + leaveDays) / workingDays) * 100) : 0;
+
+      return {
+        employeeId: emp.employeeId,
+        fullName: emp.fullName,
+        department: department?.name || 'Unknown',
+        employeeGroup: emp.employeeGroup,
+        absentDays,
+        presentDays,
+        leaveDays,
+        workingDays,
+        attendancePercentage
+      };
+    })
+    .filter(emp => emp.absentDays > 0) // Only show employees with absence
+    .sort((a, b) => b.absentDays - a.absentDays); // Sort by most absent days
+
+    res.json(absenceData);
+  } catch (error) {
+    console.error("Failed to fetch monthly absence report:", error);
+    res.status(500).json({ message: "Failed to fetch monthly absence report" });
+  }
+});
+
 // Helper function to check if a date is a government holiday
 function isGovernmentHoliday(date: Date): boolean {
   // This would typically check against a database of government holidays

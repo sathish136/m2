@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Download, Calendar, Users, Clock, TrendingUp, AlertTriangle, Settings, Eye, FileSpreadsheet } from "lucide-react";
+import { FileText, Download, Calendar, Users, Clock, TrendingUp, AlertTriangle, Settings, Eye, FileSpreadsheet, User, UserX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -219,6 +219,54 @@ export default function Reports() {
     enabled: reportType === "offer-attendance",
   });
 
+  // Employee Punch Times Report query
+  const { data: punchTimesData, isLoading: isPunchTimesLoading } = useQuery({
+    queryKey: ["/api/reports/employee-punch-times", startDate, endDate, selectedEmployee],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        startDate,
+        endDate,
+        employeeId: selectedEmployee,
+      });
+      const response = await fetch(`/api/reports/employee-punch-times?${params.toString()}`);
+      if (!response.ok) throw new Error("Failed to fetch punch times report");
+      return response.json();
+    },
+    enabled: reportType === "employee-punch-times",
+  });
+
+  // Individual Employee Monthly Report query
+  const { data: individualMonthlyData, isLoading: isIndividualMonthlyLoading } = useQuery({
+    queryKey: ["/api/reports/individual-monthly", startDate, endDate, selectedEmployee],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        startDate,
+        endDate,
+        employeeId: selectedEmployee,
+      });
+      const response = await fetch(`/api/reports/individual-monthly?${params.toString()}`);
+      if (!response.ok) throw new Error("Failed to fetch individual monthly report");
+      return response.json();
+    },
+    enabled: reportType === "individual-monthly",
+  });
+
+  // Monthly Absence Report query
+  const { data: monthlyAbsenceData, isLoading: isMonthlyAbsenceLoading } = useQuery({
+    queryKey: ["/api/reports/monthly-absence", startDate, endDate, selectedGroup],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        startDate,
+        endDate,
+        group: selectedGroup,
+      });
+      const response = await fetch(`/api/reports/monthly-absence?${params.toString()}`);
+      if (!response.ok) throw new Error("Failed to fetch monthly absence report");
+      return response.json();
+    },
+    enabled: reportType === "monthly-absence",
+  });
+
   const handlePreviewExport = () => {
     let data: any;
     let filename: string;
@@ -251,6 +299,18 @@ export default function Reports() {
       case "offer-attendance":
         data = offerAttendanceData;
         filename = `offer-attendance-${startDate}-to-${endDate}`;
+        break;
+      case "employee-punch-times":
+        data = punchTimesData;
+        filename = `employee-punch-times-${startDate}-to-${endDate}`;
+        break;
+      case "individual-monthly":
+        data = individualMonthlyData;
+        filename = `individual-monthly-${startDate}-to-${endDate}`;
+        break;
+      case "monthly-absence":
+        data = monthlyAbsenceData;
+        filename = `monthly-absence-${startDate}-to-${endDate}`;
         break;
       default:
         return;
@@ -314,6 +374,15 @@ export default function Reports() {
           break;
         case 'monthly-ot':
           reportTitle = 'Monthly Overtime Report';
+          break;
+        case 'employee-punch-times':
+          reportTitle = 'Employee Punch Times Report';
+          break;
+        case 'individual-monthly':
+          reportTitle = 'Individual Employee Monthly Report';
+          break;
+        case 'monthly-absence':
+          reportTitle = 'Monthly Absence Report';
           break;
         default:
           reportTitle = 'Attendance Report';
@@ -2297,6 +2366,9 @@ export default function Reports() {
                 <SelectItem value="half-day">Half Day Report</SelectItem>
                 <SelectItem value="short-leave-usage">Short Leave Usage Report</SelectItem>
                 <SelectItem value="offer-attendance">1/4 Offer-Attendance Report</SelectItem>
+                <SelectItem value="employee-punch-times">Employee Punch Times Report</SelectItem>
+                <SelectItem value="individual-monthly">Individual Employee Monthly Report</SelectItem>
+                <SelectItem value="monthly-absence">Monthly Absence Report</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -2371,7 +2443,7 @@ export default function Reports() {
               </SelectContent>
             </Select>
           </div>
-          {(reportType === "monthly-attendance" || reportType === "daily-ot" || reportType === "daily-attendance" || reportType === "offer-attendance" || reportType === "late-arrival" || reportType === "half-day" || reportType === "short-leave-usage" || reportType === "monthly-ot") && (
+          {(reportType === "monthly-attendance" || reportType === "daily-ot" || reportType === "daily-attendance" || reportType === "offer-attendance" || reportType === "late-arrival" || reportType === "half-day" || reportType === "short-leave-usage" || reportType === "monthly-ot" || reportType === "employee-punch-times" || reportType === "individual-monthly" || reportType === "monthly-absence") && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Group</label>
               <Select value={selectedGroup} onValueChange={setSelectedGroup}>
@@ -2398,6 +2470,9 @@ export default function Reports() {
       {reportType === "half-day" && renderHalfDayReport()}
       {reportType === "short-leave-usage" && renderShortLeaveUsageReport()}
       {reportType === "offer-attendance" && renderOfferAttendanceReport()}
+      {reportType === "employee-punch-times" && renderEmployeePunchTimesReport()}
+      {reportType === "individual-monthly" && renderIndividualMonthlyReport()}
+      {reportType === "monthly-absence" && renderMonthlyAbsenceReport()}
 
       {/* Export Preview Dialog */}
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
@@ -2524,4 +2599,263 @@ export default function Reports() {
       </Dialog>
     </div>
   );
+
+  // Employee Punch Times Report
+  function renderEmployeePunchTimesReport() {
+    if (isPunchTimesLoading) {
+      return (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-gray-500">Loading employee punch times report...</div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    if (!punchTimesData || punchTimesData.length === 0) {
+      return (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-gray-500">No punch time records found for the selected period.</div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            Employee Punch Times Report
+          </CardTitle>
+          <div className="text-sm text-gray-600">
+            Total Records: {punchTimesData.length}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse border border-gray-300 text-sm">
+              <thead>
+                <tr className="bg-blue-50">
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">S.No</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Employee ID</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Name</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Date</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Punch Time</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Type</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Day</th>
+                </tr>
+              </thead>
+              <tbody>
+                {punchTimesData.map((record: any, index: number) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{index + 1}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 font-medium text-xs">{record.employeeId}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{record.fullName}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{record.date}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs font-mono">{record.punchTime}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                        record.type === 'IN' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {record.type}
+                      </span>
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{record.dayOfWeek}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Individual Employee Monthly Report
+  function renderIndividualMonthlyReport() {
+    if (isIndividualMonthlyLoading) {
+      return (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-gray-500">Loading individual monthly report...</div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    if (!individualMonthlyData || individualMonthlyData.length === 0) {
+      return (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-gray-500">No monthly data found for the selected employee and period.</div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Individual Employee Monthly Report
+          </CardTitle>
+          <div className="text-sm text-gray-600">
+            Employee: {individualMonthlyData[0]?.fullName} ({individualMonthlyData[0]?.employeeId})
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse border border-gray-300 text-sm">
+              <thead>
+                <tr className="bg-blue-50">
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Date</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">In Time</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Out Time</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Hours</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Status</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Late</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Half Day</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Short Leave</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {individualMonthlyData.map((record: any, index: number) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{record.date}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs font-mono">{record.inTime || '-'}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs font-mono">{record.outTime || '-'}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{record.totalHours || '0.00'}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
+                        record.status === 'Absent' ? 'bg-red-100 text-red-800' :
+                        record.status === 'Present' ? 'bg-green-100 text-green-800' :
+                        record.status === 'On Leave' ? 'bg-blue-100 text-blue-800' :
+                        record.status === 'Half Day' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {record.status}
+                      </span>
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                        record.isLate ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                      }`}>
+                        {record.isLate ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                        record.isHalfDay ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {record.isHalfDay ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                        record.onShortLeave ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {record.onShortLeave ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{record.notes || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Monthly Absence Report
+  function renderMonthlyAbsenceReport() {
+    if (isMonthlyAbsenceLoading) {
+      return (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-gray-500">Loading monthly absence report...</div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    if (!monthlyAbsenceData || monthlyAbsenceData.length === 0) {
+      return (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-gray-500">No absence records found for the selected period.</div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserX className="h-5 w-5" />
+            Monthly Absence Report
+          </CardTitle>
+          <div className="text-sm text-gray-600">
+            Total Absent Employees: {monthlyAbsenceData.length}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse border border-gray-300 text-sm">
+              <thead>
+                <tr className="bg-red-50">
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">S.No</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Employee ID</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Name</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Department</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Group</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Total Absent Days</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Working Days</th>
+                  <th className="border border-gray-300 px-2 py-1.5 text-left font-semibold text-xs">Attendance %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyAbsenceData.map((record: any, index: number) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{index + 1}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 font-medium text-xs">{record.employeeId}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{record.fullName}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">{record.department || 'N/A'}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs">
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                        record.employeeGroup === 'group_a' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                      }`}>
+                        {record.employeeGroup === 'group_a' ? 'Group A' : 'Group B'}
+                      </span>
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs text-center">
+                      <span className="bg-red-100 text-red-800 px-2 py-1 rounded font-bold">
+                        {record.absentDays}
+                      </span>
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs text-center">{record.workingDays}</td>
+                    <td className="border border-gray-300 px-2 py-1.5 text-xs text-center">
+                      <span className={`px-2 py-1 rounded font-bold ${
+                        record.attendancePercentage >= 90 ? 'bg-green-100 text-green-800' :
+                        record.attendancePercentage >= 75 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {record.attendancePercentage}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 }
