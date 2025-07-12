@@ -19,9 +19,9 @@ export default function Reports() {
   const [previewData, setPreviewData] = useState<any>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
-  // Automatically update date range for Monthly Attendance Sheet
+  // Automatically update date range for Monthly OT Report
   useEffect(() => {
-    if (reportType === "monthly-attendance") {
+    if (reportType === "monthly-ot") {
       const now = new Date();
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       setStartDate(formatDate(firstDayOfMonth));
