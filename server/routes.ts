@@ -2995,14 +2995,17 @@ router.get("/api/reports/employee-punch-times", async (req, res) => {
       fullName: employees.fullName,
     }).from(employees).where(employeeWhere);
 
-    // Get all attendance records for the period
+    // Get all attendance records for the period with employee details joined
     const attendanceRecords = await db.select({
       employeeId: attendance.employeeId,
       date: attendance.date,
       checkIn: attendance.checkIn,
       checkOut: attendance.checkOut,
+      employeeFullName: employees.fullName,
+      empId: employees.employeeId,
     })
       .from(attendance)
+      .innerJoin(employees, eq(attendance.employeeId, employees.id))
       .where(and(
         gte(attendance.date, startOfPeriod),
         lte(attendance.date, endOfPeriod)
@@ -3012,9 +3015,6 @@ router.get("/api/reports/employee-punch-times", async (req, res) => {
     const punchTimesData: any[] = [];
 
     attendanceRecords.forEach(record => {
-      const employee = allEmployees.find(emp => emp.id === record.employeeId);
-      if (!employee) return;
-
       const recordDate = new Date(record.date);
       const dayOfWeek = recordDate.toLocaleDateString('en-US', { weekday: 'long' });
       const formattedDate = recordDate.toLocaleDateString('en-GB');
@@ -3023,8 +3023,8 @@ router.get("/api/reports/employee-punch-times", async (req, res) => {
       if (record.checkIn) {
         const checkInTime = new Date(record.checkIn);
         punchTimesData.push({
-          employeeId: employee.employeeId,
-          fullName: employee.fullName,
+          employeeId: record.empId,
+          fullName: record.employeeFullName,
           date: formattedDate,
           punchTime: checkInTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
           type: 'IN',
@@ -3032,12 +3032,12 @@ router.get("/api/reports/employee-punch-times", async (req, res) => {
         });
       }
 
-      // Add check-out punch
-      if (record.checkOut && record.checkOut.getTime() !== record.checkIn?.getTime()) {
+      // Add check-out punch  
+      if (record.checkOut && (!record.checkIn || record.checkOut.getTime() !== record.checkIn.getTime())) {
         const checkOutTime = new Date(record.checkOut);
         punchTimesData.push({
-          employeeId: employee.employeeId,
-          fullName: employee.fullName,
+          employeeId: record.empId,
+          fullName: record.employeeFullName,
           date: formattedDate,
           punchTime: checkOutTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
           type: 'OUT',
@@ -3057,6 +3057,11 @@ router.get("/api/reports/employee-punch-times", async (req, res) => {
       
       return a.punchTime.localeCompare(b.punchTime);
     });
+
+    console.log(`Employee Punch Times Report: Found ${punchTimesData.length} punch records`);
+    if (punchTimesData.length > 0) {
+      console.log('Sample record:', punchTimesData[0]);
+    }
 
     res.json(punchTimesData);
   } catch (error) {
@@ -3128,9 +3133,10 @@ router.get("/api/reports/individual-monthly", async (req, res) => {
       const formattedDate = currentDate.toLocaleDateString('en-GB');
       
       // Check if employee has attendance record
-      const attendanceRecord = attendanceRecords.find(record => 
-        new Date(record.date).toDateString() === currentDate.toDateString()
-      );
+      const attendanceRecord = attendanceRecords.find(record => {
+        const recordDate = new Date(record.date);
+        return recordDate.toDateString() === currentDate.toDateString();
+      });
 
       // Check if employee is on leave
       const onLeave = leaveRecords.some(leave => {
@@ -3252,7 +3258,7 @@ router.get("/api/reports/monthly-absence", async (req, res) => {
     }).from(employees).where(employeeWhere);
 
     // Get departments for display
-    const departmentList = await db.select().from(schemas.departments);
+    const departmentList = await db.select().from(departments);
 
     // Get all attendance records for the period
     const attendanceRecords = await db.select({
